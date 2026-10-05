@@ -19,12 +19,29 @@ async function createEmabedding(text) {
   return response.embeddings[0].values;
 }
 
+// function cosineSimilarity(vecA, vecB) {
+//   let dotProduct = 0;
+//   for (let i = 0; i < vecA.length; i++) {
+//     dotProduct += vecA[i] * vecB[i];
+//   }
+//   return dotProduct;
+// }
+
 function cosineSimilarity(vecA, vecB) {
   let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+
   for (let i = 0; i < vecA.length; i++) {
     dotProduct += vecA[i] * vecB[i];
+    magnitudeA += vecA[i] ** 2;
+    magnitudeB += vecB[i] ** 2;
   }
-  return dotProduct;
+
+  return (
+    dotProduct /
+    (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB))
+  );
 }
 
 export const ingestDocument = asyncHandler(async (req, res) => {
@@ -57,19 +74,32 @@ export const ingestDocument = asyncHandler(async (req, res) => {
   let bestChunk = null;
   let bestScore = -Infinity;
 
-  for (const items of chunkEmbeddings) {
-    const score = cosineSimilarity(questionEmbedding, items.embedding);
-    if (score > bestScore) {
-      bestChunk = items.text;
-      bestScore = score;
-    }
-  }
+  // for (const items of chunkEmbeddings) {
+  //   const score = cosineSimilarity(questionEmbedding, items.embedding);
+  //   if (score > bestScore) {
+  //     bestChunk = items.text;
+  //     bestScore = score;
+  //   }
+  // }
 
-  console.log(bestScore)
+  const scoredChunks = chunkEmbeddings
+  .map((item) => ({
+    text: item.text,
+    score: cosineSimilarity(questionEmbedding, item.embedding),
+  }))
+  .sort((a, b) => b.score - a.score);
+
+const topChunks = scoredChunks.slice(0, 3);
+
+const context = topChunks
+  .map((item) => item.text)
+  .join("\n\n");
+
+ 
 
   const respose = await ai.models.generateContent({
     model: "gemini-3.5-flash-lite",
-    contents: `Anser the question using the context: ${bestChunk} and Questions is : ${question}`,
+    contents: `Anser the question using the context: ${context} and Questions is : ${question}`,
   });
 
   res
