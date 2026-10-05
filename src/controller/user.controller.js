@@ -10,6 +10,23 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+async function createEmabedding(text) {
+  const response = await ai.models.embedContent({
+    model: "gemini-embedding-2",
+    contents: text,
+  });
+
+  return response.embeddings[0].values;
+}
+
+function cosineSimilarity(vecA, vecB) {
+  let dotProduct = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+  }
+  return dotProduct;
+}
+
 export const ingestDocument = asyncHandler(async (req, res) => {
   console.log("file", req.file);
 
@@ -24,12 +41,35 @@ export const ingestDocument = asyncHandler(async (req, res) => {
   await parser.destroy();
   const text = pdfData.text;
 
-  const chunks = text.split("\n\n");
+  const chunks = text.split("\n\n").filter((chunk) => chunk.trim() != "");
+  
+  const chunkEmbeddings = [];
+  for (const chunk of chunks) {
+    const embedding = await createEmabedding(chunk);
+    chunkEmbeddings.push({
+      text: chunk,
+      embedding,
+    });
+  }
+
   const question = req.body.question;
-  const mathcedChunk =chunks.find((chunk)=> chunk.toLowerCase().includes('streamo'))
+  const questionEmbedding = await createEmabedding(question);
+  let bestChunk = null;
+  let bestScore = -Infinity;
+
+  for (const items of chunkEmbeddings) {
+    const score = cosineSimilarity(questionEmbedding, items.embedding);
+    if (score > bestScore) {
+      bestChunk = items.text;
+      bestScore = score;
+    }
+  }
+
+  console.log(bestScore)
+
   const respose = await ai.models.generateContent({
     model: "gemini-3.5-flash-lite",
-    contents: `Anser the question using the context: ${mathcedChunk} and Questions is : ${question}`,
+    contents: `Anser the question using the context: ${bestChunk} and Questions is : ${question}`,
   });
 
   res
@@ -37,7 +77,7 @@ export const ingestDocument = asyncHandler(async (req, res) => {
     .json(
       new ApiRespose(
         201,
-        [{ totalChunks: chunks.length,mathcedChunk, response: respose.text }],
+        [{ totalChunks: chunks.length,  response: respose.text }],
         "file uploaded successfully",
       ),
     );
