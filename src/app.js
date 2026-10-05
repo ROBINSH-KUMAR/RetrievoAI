@@ -24,7 +24,7 @@ app.use(express.static("public"));
 
 
 //router
-app.use("/api/v1", userRouter);
+app.use("/api/v1/users", userRouter);
 
 
 
